@@ -1,40 +1,51 @@
 import cv2
 import numpy as np
 import os
+import matplotlib.pyplot as plt
+from helpers import processar_imagem, bounding_box_prediction, final_prediction
 
+# paths
 weights_path = os.path.join("weights", "yolov3.weights")
-config_path = os.path.join("cfg","yolov3.cfg" )
-data_path = os.path.join("data","coco.names" )
+config_path = os.path.join("cfg", "yolov3.cfg")
+data_path = os.path.join("data", "coco.names")
 
-model = cv2.dnn.readNetFromDarknet(config_path,weights_path)
+model = cv2.dnn.readNetFromDarknet(config_path, weights_path)
 
 classes_names = []
-k = open(data_path,'r')
-for i in k.readlines():
-    classes_names.append(i.strip())
+with open(data_path, 'r') as f:
+    for line in f.readlines():
+        classes_names.append(line.strip())
 
-def processar_imagem(path_img):
-    img = cv2.imread(path_img)
-    height, width, _ = img.shape
+# processar imagem
+image_path = 'images/dog.jpg'
+output_data, image = processar_imagem(image_path, model)
 
-    blob = cv2.dnn.blobFromImage(img , 1/255 , (320,320) , True , crop = False)
+original_width, original_height = image.shape[1], image.shape[0]
 
-    model.setInput(blob)
-    cfg_data = model.getLayerNames()
+#gera a prefição
+prediction_box, bounding_box, confidence, class_labels = bounding_box_prediction(output_data)
 
-    #print(cfg_data)
-    layer_names = model.getUnconnectedOutLayers()
+# gera a imagem desenhada
+result_image = final_prediction(
+    image, 
+    prediction_box, 
+    bounding_box, 
+    confidence, 
+    class_labels, 
+    classes_names, 
+    original_width / 320, 
+    original_height / 320
+)
 
-    outputs = [cfg_data[i-1] for i in layer_names]
-    #print(outputs)
+output_path = 'images/output.jpg'
+cv2.imwrite(output_path, result_image)
 
-    output_data = model.forward(outputs)
+result_image_rgb = cv2.cvtColor(result_image, cv2.COLOR_BGR2RGB)
 
-    return output_data
+plt.figure(figsize=(12, 8))
+plt.imshow(result_image_rgb)
+plt.title('YOLOv3 Detection')
+plt.axis('off')
+plt.tight_layout()
+plt.show()
 
-print(processar_imagem("images/cat.jpg"))
-
-# essa parte não peguei pra entender ainda
-#prediction_box , bounding_box , confidence , class_labels = bounding_box_prediction(output_data)
-
-#inal_prediction(prediction_box , bounding_box , confidence , class_labels , original_with / 320 , original_height / 320 )
