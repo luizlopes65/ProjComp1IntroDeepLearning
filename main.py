@@ -17,7 +17,7 @@ with open(data_path, 'r') as f:
         classes_names.append(line.strip())
 
 # processar imagem
-image_path = 'images/cat.jpg'
+image_path = 'images/city_scene.jpg'
 output_data, image = processar_imagem(image_path, model)
 
 original_width, original_height = image.shape[1], image.shape[0]
