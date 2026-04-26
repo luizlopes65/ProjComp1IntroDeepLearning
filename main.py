@@ -1,51 +1,55 @@
-import cv2
-import numpy as np
-import os
-import matplotlib.pyplot as plt
-from helpers import processar_imagem, bounding_box_prediction, final_prediction
+import torch
+from config import YOLOV3_ANCHORS
+from utils import read_classes
+from model import YOLOv3
+from weights import carregar_pesos_yolov3
+from inference import executar_predicao
 
-# paths
-weights_path = os.path.join("weights", "yolov3.weights")
-config_path = os.path.join("cfg", "yolov3.cfg")
-data_path = os.path.join("data", "coco.names")
 
-model = cv2.dnn.readNetFromDarknet(config_path, weights_path)
+# ==========================================
+# EXECUÇÃO PRINCIPAL
+# ==========================================
 
-classes_names = []
-with open(data_path, 'r') as f:
-    for line in f.readlines():
-        classes_names.append(line.strip())
+def main():
+    # Configuração do dispositivo
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Processamento via: {device}")
 
-# processar imagem
-image_path = 'images/city_scene.jpg'
-output_data, image = processar_imagem(image_path, model)
+    # 1. Carregue as classes
+    class_names = read_classes("data/coco.names")  # Certifique-se de que o arquivo tenha 80 linhas
+    print(f"Carregadas {len(class_names)} classes")
 
-original_width, original_height = image.shape[1], image.shape[0]
+    # 2. Instancie o YOLOv3
+    modelo = YOLOv3(num_classes=len(class_names)).to(device)
+    print("Modelo YOLOv3 instanciado")
 
-#gera a prefição
-prediction_box, bounding_box, confidence, class_labels = bounding_box_prediction(output_data)
+    # 3. Converter e Salvar os Pesos (Rode isso a primeira vez)
+    try:
+        arquivo_weights = "weights/yolov3.weights"
+        modelo = carregar_pesos_yolov3(arquivo_weights, modelo)
+        torch.save(modelo.state_dict(), "yolov3_convertido.pth")
+        print("Pesos convertidos e salvos em yolov3_convertido.pth")
+    except Exception as e:
+        print(f"Aviso na conversão (talvez os pesos já existam ou o arquivo não foi encontrado): {e}")
 
-# gera a imagem desenhada
-result_image = final_prediction(
-    image, 
-    prediction_box, 
-    bounding_box, 
-    confidence, 
-    class_labels, 
-    classes_names, 
-    original_width / 320, 
-    original_height / 320
-)
 
-output_path = 'images/output.jpg'
-cv2.imwrite(output_path, result_image)
+    try:
+        modelo.load_state_dict(torch.load("yolov3_convertido.pth", map_location=device))
+        print("Pesos carregados de yolov3_convertido.pth")
+    except Exception as e:
+        print(f"Erro ao carregar pesos: {e}")
+        return
 
-result_image_rgb = cv2.cvtColor(result_image, cv2.COLOR_BGR2RGB)
+    # 5. Execute predições nas imagens de teste
+    print("\n" + "="*50)
+    print("Executando predições...")
+    print("="*50 + "\n")
+    
+    # Coloque o nome da sua imagem de teste aqui
+    executar_predicao("images/dog.jpg", modelo, class_names, YOLOV3_ANCHORS, device, score_threshold=0.5)
+    executar_predicao("images/food.jpg", modelo, class_names, YOLOV3_ANCHORS, device)
 
-plt.figure(figsize=(12, 8))
-plt.imshow(result_image_rgb)
-plt.title('YOLOv3 Detection')
-plt.axis('off')
-plt.tight_layout()
-plt.show()
+
+if __name__ == "__main__":
+    main()
 
