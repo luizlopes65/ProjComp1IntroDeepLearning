@@ -81,7 +81,7 @@ def executar_predicao(image_file, model, class_names, anchors, device, score_thr
 
         #keep = torchvision.ops.nms(boxes, scores, iou_threshold) # Isso é função pronta, não use isso no seu código, a menos que queira comparar com a sua implementação apenas
         # Aplica o nosso NMS Manual
-        keep = manual_nms(boxes, scores, iou_threshold) # Aqui entra a função manual de NMS que devem implementar
+        keep = manual_nms(boxes, scores, classes, iou_threshold) # Aqui entra a função manual de NMS que devem implementar
 
         # Limita ao número máximo de caixas desejado (ex: top 10 detecções)
         max_boxes = 10

@@ -94,7 +94,7 @@ def preprocess_image(img_path, model_image_size=(416, 416)):
     return image, image_data
 
 
-def manual_nms(boxes, scores, iou_threshold):
+def manual_nms(boxes, scores, classes, iou_threshold):
     """
     Non-Maximum Suppression (NMS) Manual - IMPLEMENTAÇÃO NECESSÁRIA
     
@@ -116,9 +116,37 @@ def manual_nms(boxes, scores, iou_threshold):
        - Remover caixas com IoU > iou_threshold
     3. Retornar índices das caixas mantidas
     """
+    keep = []
+
     # PLACEHOLDER - Implementação necessária
     # Por enquanto, retorna todos os índices ordenados por score
-    _, indices = torch.sort(scores, descending=True)
-    return indices
+    order = scores.argsort(descending=True)
+    while (len(order) > 0):
+        idx = order[0]
+        keep.append(idx.item())
+        if (len(order) == 1):
+            break
+        order = order[1:]
+        classe_campea = classes[idx]
+        campea = boxes[idx]
+        classe_restantes = classes[order]
+        restantes = boxes[order]
+
+        xx1 = torch.max(campea[0], restantes[:, 0])
+        yy1 = torch.max(campea[1], restantes[:, 1])
+        xx2 = torch.min(campea[2], restantes[:, 2])
+        yy2 = torch.min(campea[3], restantes[:, 3])
+
+        w = torch.clamp(xx2 - xx1, min=0.0)
+        h = torch.clamp(yy2 - yy1, min=0.0)
+        area_intersecao = w * h
+        area_campea = (campea[2] - campea[0]) * (campea[3] - campea[1])
+        area_restantes = (restantes[:, 2] - restantes[:, 0]) * (restantes[:, 3] - restantes[:, 1])
+        uniao = area_campea + area_restantes - area_intersecao
+        iou = area_intersecao / uniao
+        mask = (iou <= iou_threshold) | (classe_campea != classe_restantes)
+        order = order[mask]
+
+    return torch.tensor(keep, dtype=torch.long)
 
  
