@@ -3,7 +3,7 @@ from config import YOLOV3_ANCHORS
 from utils import read_classes
 from model import YOLOv3
 from weights import carregar_pesos_yolov3
-from inference import executar_predicao
+from inference import executar_predicao, executar_predicao_ultralytics
 
 
 # ==========================================
@@ -50,6 +50,30 @@ def main():
     executar_predicao("images/food.jpg", modelo, class_names, YOLOV3_ANCHORS, device)
 
 
-if __name__ == "__main__":
-    main()
+def main_ultralytics():
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    model_path = 'yolov8n.pt'  
 
+    #mudar se quiser
+    images = [
+        "images/dog.jpg",
+        "images/food.jpg",
+    ]
+    
+    for img in images:
+        executar_predicao_ultralytics(
+            img, 
+            model_path=model_path,
+            score_threshold=0.25,
+            iou_threshold=0.45,
+            device=device
+        )
+
+
+if __name__ == "__main__":
+    
+    # main()
+
+    main_ultralytics()

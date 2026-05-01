@@ -127,3 +127,34 @@ def executar_predicao(image_file, model, class_names, anchors, device, score_thr
     plt.show()
 
  
+
+def executar_predicao_ultralytics(image_file, model_path='yolov8n.pt', score_threshold=0.25, iou_threshold=0.45, device='cpu'):
+
+    from weights import carregar_pesos_ultralytics_v26
+    
+
+    modelo = carregar_pesos_ultralytics_v26(model_path, device=device)
+    modelo.conf = score_threshold
+    modelo.iou = iou_threshold
+    
+    results = modelo.predict(
+        source=image_file,
+        save=True,
+        conf=score_threshold,
+        iou=iou_threshold,
+        show=False,
+        verbose=True
+    )
+    
+    for r in results:
+        im_array = r.plot()
+        im_rgb = im_array[:, :, ::-1]
+        
+        plt.figure(figsize=(12, 12))
+        plt.imshow(im_rgb)
+        plt.axis('off')
+        plt.title(f'Detecções: {len(r.boxes)} objetos')
+        plt.tight_layout()
+        plt.show()
+    
+    return results
