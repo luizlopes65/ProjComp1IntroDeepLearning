@@ -2,19 +2,17 @@ import torch
 import os
 import time
 import numpy as np
-import matplotlib.pyplot as plt
 from pathlib import Path
 from glob import glob
-from PIL import Image, ImageDraw, ImageFont
+
+# Importações do seu projeto
 from weights import carregar_pesos_ultralytics_v26, carregar_pesos_yolov3
 from model import YOLOv3
 from config import YOLOV3_ANCHORS
-from utils import (read_classes, preprocess_image, reverter_escala_caixas, 
-                   generate_colors, manual_nms)
+from utils import read_classes, preprocess_image, reverter_escala_caixas, manual_nms
 from inference import decode_yolo
 
 # --- CONFIGURAÇÕES DOS EXPERIMENTOS ---
-# Adicione ou remova combinações aqui
 GRID_PESQUISA = [
     {'conf': 0.25, 'iou': 0.45},
     {'conf': 0.50, 'iou': 0.45},
@@ -25,9 +23,6 @@ GRID_PESQUISA = [
     {'conf': 0.75, 'iou': 0.75},
 ]
 
-def criar_estrutura_pastas():
-    Path("exps/comparativos").mkdir(parents=True, exist_ok=True)
-
 def listar_imagens(pasta="images"):
     extensoes = ['*.jpg', '*.jpeg', '*.png', '*.bmp']
     imagens = []
@@ -36,33 +31,32 @@ def listar_imagens(pasta="images"):
     return sorted(imagens)
 
 def executar_exp_v26(imagens, device, conf, iou):
-    """Executa YOLOv26 e retorna métricas médias."""
+    """Executa YOLOv26 e retorna (tempo_médio, detecções_médias, confiança_média)."""
     modelo = carregar_pesos_ultralytics_v26('yolov8n.pt', device=device)
-    tempos = []
-    detecoes = []
+    tempos, detecoes, confiancas = [], [], []
     
     for img_path in imagens:
         start = time.time()
         results = modelo.predict(source=img_path, conf=conf, iou=iou, verbose=False)
         tempos.append(time.time() - start)
-        detecoes.append(len(results[0].boxes))
         
-        # Salva apenas uma amostra para não lotar o disco (opcional)
-        # results[0].save(f"exps/last_v26.jpg")
+        # Extrai scores de confiança
+        scores = results[0].boxes.conf.cpu().numpy()
+        detecoes.append(len(scores))
+        if len(scores) > 0:
+            confiancas.append(np.mean(scores))
 
-    return np.mean(tempos), np.mean(detecoes)
+    return np.mean(tempos), np.mean(detecoes), np.mean(confiancas) if confiancas else 0.0
 
 def executar_exp_v3(imagens, device, conf, iou):
-    """Executa YOLOv3 e retorna métricas médias."""
+    """Executa YOLOv3 e retorna (tempo_médio, detecções_médias, confiança_média)."""
     class_names = read_classes("data/coco.names")
     modelo = YOLOv3(num_classes=len(class_names)).to(device)
-    # Carregando pesos convertidos
     if Path("yolov3_convertido.pth").exists():
         modelo.load_state_dict(torch.load("yolov3_convertido.pth", map_location=device))
     modelo.eval()
 
-    tempos = []
-    detecoes = []
+    tempos, detecoes, confiancas = [], [], []
 
     for img_path in imagens:
         start = time.time()
@@ -75,67 +69,65 @@ def executar_exp_v3(imagens, device, conf, iou):
             b2, s2 = decode_yolo(out2, YOLOV3_ANCHORS[1], len(class_names), 416)
             b3, s3 = decode_yolo(out3, YOLOV3_ANCHORS[2], len(class_names), 416)
             
-            all_boxes = torch.cat([b1, b2, b3], dim=0)
             all_scores = torch.cat([s1, s2, s3], dim=0)
+            box_class_scores, _ = torch.max(all_scores, dim=-1)
             
-            box_class_scores, box_classes = torch.max(all_scores, dim=-1)
-            mask = box_class_scores >= conf # Usando o CONF do parâmetro
+            # Filtro de confiança aplicado aqui para a métrica
+            mask = box_class_scores >= conf
+            scores_filtrados = box_class_scores[mask].cpu().numpy()
             
-            boxes, scores, classes = all_boxes[mask], box_class_scores[mask], box_classes[mask]
-            
-            if boxes.size(0) > 0:
-                keep = manual_nms(boxes, scores, classes, iou) # Usando o IOU do parâmetro
-                num_det = len(keep)
-            else:
-                num_det = 0
+            # Nota: Para simplificar a métrica de precisão por confiança, 
+            # usamos os scores antes do NMS ou após o filtro de máscara.
+            detecoes.append(len(scores_filtrados))
+            if len(scores_filtrados) > 0:
+                confiancas.append(np.mean(scores_filtrados))
         
         tempos.append(time.time() - start)
-        detecoes.append(num_det)
 
-    return np.mean(tempos), np.mean(detecoes)
+    return np.mean(tempos), np.mean(detecoes), np.mean(confiancas) if confiancas else 0.0
 
-def imprimir_tabela(resultados):
-    print("\n" + "="*90)
-    print("📊 RESULTADOS COMPARATIVOS: YOLOv3 vs YOLOv26".center(90))
-    print("="*90)
-    header = f"{'Configuração (C/I)':<20} | {'V3 Time (s)':<12} | {'V26 Time (s)':<12} | {'V3 Det.':<10} | {'V26 Det.':<10}"
+def imprimir_tabela_final(resultados):
+    print("\n" + "="*110)
+    print("📊 COMPARATIVO DETALHADO: YOLOv3 vs YOLOv26".center(110))
+    print("="*110)
+    # Cabeçalho expandido
+    header = (f"{'Config (C/I)':<15} | {'Modelo':<8} | {'Tempo (s)':<12} | "
+              f"{'Det. Médias':<12} | {'Confianca Méd.':<15}")
     print(header)
-    print("-" * 90)
+    print("-" * 110)
     
     for r in resultados:
-        row = (f"Conf:{r['conf']:.2f} IOU:{r['iou']:.2f} | "
-               f"{r['v3_t']:<12.4f} | {r['v26_t']:<12.4f} | "
-               f"{r['v3_d']:<10.1f} | {r['v26_d']:<10.1f}")
-        print(row)
-    print("="*90)
+        # Linha YOLOv3
+        print(f"{f'C:{r['conf']} I:{r['iou']}':<15} | {'V3':<8} | {r['v3_t']:<12.4f} | "
+              f"{r['v3_d']:<12.1f} | {r['v3_c']:<15.2%}")
+        # Linha YOLOv26
+        print(f"{'':<15} | {'V26':<8} | {r['v26_t']:<12.4f} | "
+              f"{r['v26_d']:<12.1f} | {r['v26_c']:<15.2%}")
+        print("-" * 110)
 
 def main():
-    criar_estrutura_pastas()
     imagens = listar_imagens("images")
-    if not imagens: return print("Imagens não encontradas.")
+    if not imagens: return print("❌ Nenhuma imagem em 'images/'")
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f"🚀 Iniciando testes em {len(imagens)} imagens usando {device}...\n")
+    print(f"🖥️  Dispositivo: {device} | Imagens: {len(imagens)}\n")
     
     resultados_finais = []
 
     for param in GRID_PESQUISA:
         c, i = param['conf'], param['iou']
-        print(f"🔎 Testando: Conf={c}, IOU={i}...")
+        print(f"🔄 Processando Grid: Conf={c}, IOU={i}...")
         
-        # Execução YOLOv26
-        v26_t, v26_d = executar_exp_v26(imagens, device, c, i)
-        
-        # Execução YOLOv3
-        v3_t, v3_d = executar_exp_v3(imagens, device, c, i)
+        v26_t, v26_d, v26_c = executar_exp_v26(imagens, device, c, i)
+        v3_t, v3_d, v3_c = executar_exp_v3(imagens, device, c, i)
         
         resultados_finais.append({
             'conf': c, 'iou': i,
-            'v26_t': v26_t, 'v26_d': v26_d,
-            'v3_t': v3_t, 'v3_d': v3_d
+            'v26_t': v26_t, 'v26_d': v26_d, 'v26_c': v26_c,
+            'v3_t': v3_t, 'v3_d': v3_d, 'v3_c': v3_c
         })
 
-    imprimir_tabela(resultados_finais)
+    imprimir_tabela_final(resultados_finais)
 
 if __name__ == "__main__":
     main()
