@@ -60,6 +60,16 @@ def main_ultralytics():
     images = [
         "images/dog.jpg",
         "images/food.jpg",
+        "images/cat.jpg",
+        "images/dog2.jpg",
+        "images/wine.jpg",
+        "images/city_scene.jpg",
+        "images/eagle.jpg",
+        "images/giraffe.jpg",
+        "images/horses.jpg",
+        "images/motorbike.jpg",
+        "images/person.jpg",
+        "images/surf.jpg"
     ]
     
     for img in images:
