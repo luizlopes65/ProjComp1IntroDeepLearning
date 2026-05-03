@@ -18,7 +18,11 @@ from inference import decode_yolo
 GRID_PESQUISA = [
     {'conf': 0.25, 'iou': 0.45},
     {'conf': 0.50, 'iou': 0.45},
+    {'conf': 0.50, 'iou': 0.50},
     {'conf': 0.25, 'iou': 0.25},
+    {'conf': 0.50, 'iou': 0.75},
+    {'conf': 0.75, 'iou': 0.50},
+    {'conf': 0.75, 'iou': 0.75},
 ]
 
 def criar_estrutura_pastas():
