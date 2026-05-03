@@ -90,16 +90,19 @@ def imprimir_tabela_final(resultados):
     print("\n" + "="*110)
     print("📊 COMPARATIVO DETALHADO: YOLOv3 vs YOLOv26".center(110))
     print("="*110)
-    # Cabeçalho expandido
     header = (f"{'Config (C/I)':<15} | {'Modelo':<8} | {'Tempo (s)':<12} | "
               f"{'Det. Médias':<12} | {'Confianca Méd.':<15}")
     print(header)
     print("-" * 110)
     
     for r in resultados:
+        # Note o uso de aspas duplas por fora para aceitar aspas simples dentro do dicionário r['conf']
+        config_str = f"C:{r['conf']} I:{r['iou']}"
+        
         # Linha YOLOv3
-        print(f"{f'C:{r['conf']} I:{r['iou']}':<15} | {'V3':<8} | {r['v3_t']:<12.4f} | "
+        print(f"{config_str:<15} | {'V3':<8} | {r['v3_t']:<12.4f} | "
               f"{r['v3_d']:<12.1f} | {r['v3_c']:<15.2%}")
+        
         # Linha YOLOv26
         print(f"{'':<15} | {'V26':<8} | {r['v26_t']:<12.4f} | "
               f"{r['v26_d']:<12.1f} | {r['v26_c']:<15.2%}")
