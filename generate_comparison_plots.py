@@ -63,6 +63,7 @@ def generate_all_comparisons(base_dir="exps", output_dir="comparisons"):
         output_dir: Directory to save comparison plots
     """
     v3_path = Path(base_dir) / "exp_v3"
+    image_path = "images/"
     v26_path = Path(base_dir) / "exp_v26"
     
     if not v3_path.exists() or not v26_path.exists():
@@ -86,11 +87,11 @@ def generate_all_comparisons(base_dir="exps", output_dir="comparisons"):
     print("="*60 + "\n")
     
     for img_file in image_files:
-        original_img = v3_path / img_file  # Original is same in both
         v3_pred = v3_path / img_file
         v26_pred = v26_path / img_file
+        original_img = image_path + img_file
         
-        if not original_img.exists() or not v3_pred.exists() or not v26_pred.exists():
+        if not v3_pred.exists() or not v26_pred.exists():
             print(f"⚠️  Skipping {img_file} (files not found)")
             continue
         
