@@ -40,6 +40,57 @@ def decode_yolo(feats, anchors, num_classes, img_size=416):
     return boxes.view(-1, 4), scores.view(-1, num_classes)
 
 
+def desenhar_deteccoes(image, boxes, scores, classes, class_names):
+    """
+    Desenha as detecções em uma imagem.
+    
+    Args:
+        image: PIL Image
+        boxes: Tensor de caixas [N, 4] no formato [y_min, x_min, y_max, x_max]
+        scores: Tensor de scores [N]
+        classes: Tensor de índices de classes [N]
+        class_names: Lista com nomes das classes
+    
+    Returns:
+        image: PIL Image com as detecções desenhadas
+    """
+    colors = generate_colors(class_names)
+    font = ImageFont.load_default()
+    thickness = (image.size[0] + image.size[1]) // 300
+    
+    for i, c in reversed(list(enumerate(classes.cpu().numpy()))):
+        predicted_class = class_names[c]
+        box = boxes[i].cpu().numpy()
+        score = scores[i].cpu().item()
+        
+        label = f'{predicted_class} {score:.2f}'
+        draw = ImageDraw.Draw(image)
+        bbox = draw.textbbox((0, 0), label, font=font)
+        label_size = (bbox[2] - bbox[0], bbox[3] - bbox[1])
+        
+        top, left, bottom, right = box
+        top = max(0, np.floor(top + 0.5).astype('int32'))
+        left = max(0, np.floor(left + 0.5).astype('int32'))
+        bottom = min(image.size[1], np.floor(bottom + 0.5).astype('int32'))
+        right = min(image.size[0], np.floor(right + 0.5).astype('int32'))
+        
+        if left >= right or top >= bottom:
+            continue
+        
+        text_origin = np.array([left, top - label_size[1]]) if top - label_size[1] >= 0 else np.array([left, top + 1])
+        
+        for j in range(thickness):
+            if left+j >= right-j or top+j >= bottom-j:
+                break
+            draw.rectangle([left+j, top+j, right-j, bottom-j], outline=colors[c])
+        
+        draw.rectangle([tuple(text_origin), tuple(text_origin + label_size)], fill=colors[c])
+        draw.text(tuple(text_origin), label, fill=(0, 0, 0), font=font)
+        del draw
+    
+    return image
+
+
 def executar_predicao(image_file, model, class_names, anchors, device, score_threshold=0.5, iou_threshold=0.4):
     """Executa a predição completa em uma imagem e exibe o resultado."""
     print(f"Processando imagem: {image_file}")
@@ -88,38 +139,8 @@ def executar_predicao(image_file, model, class_names, anchors, device, score_thr
         keep = keep[:max_boxes]
         boxes, scores, classes = boxes[keep], scores[keep], classes[keep]
 
-    # Desenho
-    colors = generate_colors(class_names)
-    font = ImageFont.load_default()
-    thickness = (image.size[0] + image.size[1]) // 300
-
-    for i, c in reversed(list(enumerate(classes.cpu().numpy()))):
-        predicted_class = class_names[c]
-        box = boxes[i].cpu().numpy()
-        score = scores[i].cpu().item()
-
-        label = f'{predicted_class} {score:.2f}'
-        draw = ImageDraw.Draw(image)
-        bbox = draw.textbbox((0, 0), label, font=font)
-        label_size = (bbox[2] - bbox[0], bbox[3] - bbox[1])
-
-        top, left, bottom, right = box
-        top = max(0, np.floor(top + 0.5).astype('int32'))
-        left = max(0, np.floor(left + 0.5).astype('int32'))
-        bottom = min(image.size[1], np.floor(bottom + 0.5).astype('int32'))
-        right = min(image.size[0], np.floor(right + 0.5).astype('int32'))
-
-        if left >= right or top >= bottom: continue
-
-        text_origin = np.array([left, top - label_size[1]]) if top - label_size[1] >= 0 else np.array([left, top + 1])
-
-        for j in range(thickness):
-            if left+j >= right-j or top+j >= bottom-j: break
-            draw.rectangle([left+j, top+j, right-j, bottom-j], outline=colors[c])
-
-        draw.rectangle([tuple(text_origin), tuple(text_origin + label_size)], fill=colors[c])
-        draw.text(tuple(text_origin), label, fill=(0, 0, 0), font=font)
-        del draw
+    # Desenha detecções usando a função utilitária
+    image = desenhar_deteccoes(image, boxes, scores, classes, class_names)
 
     plt.figure(figsize=(12, 12))
     plt.imshow(image)

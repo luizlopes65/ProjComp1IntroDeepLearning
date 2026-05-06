@@ -10,8 +10,8 @@ from glob import glob
 from weights import carregar_pesos_ultralytics_v26, carregar_pesos_yolov3
 from model import YOLOv3
 from config import YOLOV3_ANCHORS
-from utils import read_classes
-from inference import executar_predicao, executar_predicao_ultralytics
+from utils import read_classes, preprocess_image, reverter_escala_caixas, manual_nms
+from inference import decode_yolo, desenhar_deteccoes
 import matplotlib.pyplot as plt
 
 
@@ -71,7 +71,7 @@ def executar_exp_v26(imagens, device='cpu'):
                 
                 # Nome do arquivo de saída
                 img_name = Path(img_path).name
-                output_path = f"exps/exp_v26/{img_name}"
+                output_path = f"exps/exp_v26_hard/{img_name}"
                 
                 # Salva imagem
                 plt.figure(figsize=(12, 8))
@@ -142,29 +142,28 @@ def executar_exp_v3(imagens, device='cpu'):
             # Configura matplotlib para salvar em vez de mostrar
             plt.ioff()
             
-            # Executa predição (modificada para salvar)
-            from utils import preprocess_image, reverter_escala_caixas, generate_colors, manual_nms
-            from PIL import Image, ImageDraw, ImageFont
-            import numpy as np
-            
+            # Executa predição usando funções do utils e inference
             image, image_data = preprocess_image(img_path, (416, 416))
             image_data = image_data.to(device)
             
             with torch.no_grad():
                 out1, out2, out3 = modelo(image_data)
                 
-                from inference import decode_yolo
+                # Decodifica as saídas das 3 escalas
                 b1, s1 = decode_yolo(out1, YOLOV3_ANCHORS[0], len(class_names), 416)
                 b2, s2 = decode_yolo(out2, YOLOV3_ANCHORS[1], len(class_names), 416)
                 b3, s3 = decode_yolo(out3, YOLOV3_ANCHORS[2], len(class_names), 416)
                 
+                # Concatena todas as detecções
                 all_boxes = torch.cat([b1, b2, b3], dim=0)
                 all_scores = torch.cat([s1, s2, s3], dim=0)
                 
+                # Remove valores inválidos
                 valid_mask = torch.isfinite(all_boxes).all(dim=-1) & torch.isfinite(all_scores).all(dim=-1)
                 all_boxes = all_boxes[valid_mask]
                 all_scores = all_scores[valid_mask]
                 
+                # Filtra por confiança
                 box_class_scores, box_classes = torch.max(all_scores, dim=-1)
                 mask = box_class_scores >= 0.5
                 
@@ -173,50 +172,22 @@ def executar_exp_v3(imagens, device='cpu'):
                 classes = box_classes[mask]
                 
                 if boxes.size(0) > 0:
+                    # Reverte escala das caixas para tamanho original
                     boxes = reverter_escala_caixas(boxes, (416, 416), image.size)
+                    # Aplica NMS usando função do utils
                     keep = manual_nms(boxes, scores, classes, 0.4)
                     keep = keep[:10]
                     boxes, scores, classes = boxes[keep], scores[keep], classes[keep]
                     
-                    # Desenha detecções
-                    colors = generate_colors(class_names)
-                    font = ImageFont.load_default()
-                    thickness = (image.size[0] + image.size[1]) // 300
-                    
-                    for i_box, c in enumerate(classes.cpu().numpy()):
-                        predicted_class = class_names[c]
-                        box = boxes[i_box].cpu().numpy()
-                        score = scores[i_box].cpu().item()
-                        
-                        label = f'{predicted_class} {score:.2f}'
-                        draw = ImageDraw.Draw(image)
-                        bbox = draw.textbbox((0, 0), label, font=font)
-                        label_size = (bbox[2] - bbox[0], bbox[3] - bbox[1])
-                        
-                        top, left, bottom, right = box
-                        top = max(0, int(top))
-                        left = max(0, int(left))
-                        bottom = min(image.size[1], int(bottom))
-                        right = min(image.size[0], int(right))
-                        
-                        if left < right and top < bottom:
-                            text_origin = np.array([left, top - label_size[1]]) if top - label_size[1] >= 0 else np.array([left, top + 1])
-                            
-                            for j in range(thickness):
-                                if left+j < right-j and top+j < bottom-j:
-                                    draw.rectangle([left+j, top+j, right-j, bottom-j], outline=colors[c])
-                            
-                            draw.rectangle([tuple(text_origin), tuple(text_origin + label_size)], fill=colors[c])
-                            draw.text(tuple(text_origin), label, fill=(0, 0, 0), font=font)
-                        del draw
-                    
+                    # Desenha detecções na imagem usando função do inference
+                    image = desenhar_deteccoes(image, boxes, scores, classes, class_names)
                     num_detections = len(boxes)
                 else:
                     num_detections = 0
             
             # Salva imagem
             img_name = Path(img_path).name
-            output_path = f"exps/exp_v3/{img_name}"
+            output_path = f"exps/exp_v3_hard/{img_name}"
             image.save(output_path)
             
             print(f"  ✓ {num_detections} objetos detectados")
@@ -244,7 +215,7 @@ def main():
     criar_estrutura_pastas()
     
     # Lista imagens
-    imagens = listar_imagens("images")
+    imagens = listar_imagens("images/hard_images")
     
     if not imagens:
         print("❌ Nenhuma imagem encontrada na pasta 'images/'")
