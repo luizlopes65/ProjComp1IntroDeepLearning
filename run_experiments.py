@@ -1,7 +1,4 @@
-"""
-Script para executar experimentos com YOLOv3 e YOLOv26 (ultralytics)
-Salva os resultados em pastas separadas: exps/exp_v3 e exps/exp_v26
-"""
+"""Run comparative experiments between YOLOv3 and YOLOv8."""
 
 import torch
 import os
@@ -16,7 +13,7 @@ import matplotlib.pyplot as plt
 
 
 def criar_estrutura_pastas():
-    """Cria a estrutura de pastas para os experimentos."""
+    """Create folder structure for experiments."""
     Path("exps/exp_v3").mkdir(parents=True, exist_ok=True)
     Path("exps/exp_v26").mkdir(parents=True, exist_ok=True)
     print("✓ Estrutura de pastas criada:")
@@ -25,7 +22,7 @@ def criar_estrutura_pastas():
 
 
 def listar_imagens(pasta="images"):
-    """Lista todas as imagens na pasta especificada."""
+    """List all images in specified folder."""
     extensoes = ['*.jpg', '*.jpeg', '*.png', '*.bmp']
     imagens = []
     for ext in extensoes:
@@ -35,10 +32,7 @@ def listar_imagens(pasta="images"):
 
 
 def executar_exp_v26(imagens, device='cpu'):
-    """
-    Executa experimento com YOLOv26 (ultralytics).
-    Salva resultados em exps/exp_v26/
-    """
+    """Run YOLOv8 experiment and save results."""
     print("\n" + "="*60)
     print("EXPERIMENTO: YOLOv26 (Ultralytics)")
     print("="*60 + "\n")
@@ -97,10 +91,7 @@ def executar_exp_v26(imagens, device='cpu'):
 
 
 def executar_exp_v3(imagens, device='cpu'):
-    """
-    Executa experimento com YOLOv3 original.
-    Salva resultados em exps/exp_v3/
-    """
+    """Run YOLOv3 experiment and save results."""
     print("\n" + "="*60)
     print("EXPERIMENTO: YOLOv3 (Original)")
     print("="*60 + "\n")
@@ -139,31 +130,24 @@ def executar_exp_v3(imagens, device='cpu'):
         print(f"[{i}/{len(imagens)}] Processando: {img_path}")
         
         try:
-            # Configura matplotlib para salvar em vez de mostrar
             plt.ioff()
-            
-            # Executa predição usando funções do utils e inference
             image, image_data = preprocess_image(img_path, (416, 416))
             image_data = image_data.to(device)
             
             with torch.no_grad():
                 out1, out2, out3 = modelo(image_data)
                 
-                # Decodifica as saídas das 3 escalas
                 b1, s1 = decode_yolo(out1, YOLOV3_ANCHORS[0], len(class_names), 416)
                 b2, s2 = decode_yolo(out2, YOLOV3_ANCHORS[1], len(class_names), 416)
                 b3, s3 = decode_yolo(out3, YOLOV3_ANCHORS[2], len(class_names), 416)
                 
-                # Concatena todas as detecções
                 all_boxes = torch.cat([b1, b2, b3], dim=0)
                 all_scores = torch.cat([s1, s2, s3], dim=0)
                 
-                # Remove valores inválidos
                 valid_mask = torch.isfinite(all_boxes).all(dim=-1) & torch.isfinite(all_scores).all(dim=-1)
                 all_boxes = all_boxes[valid_mask]
                 all_scores = all_scores[valid_mask]
                 
-                # Filtra por confiança
                 box_class_scores, box_classes = torch.max(all_scores, dim=-1)
                 mask = box_class_scores >= 0.5
                 
@@ -172,20 +156,14 @@ def executar_exp_v3(imagens, device='cpu'):
                 classes = box_classes[mask]
                 
                 if boxes.size(0) > 0:
-                    # Reverte escala das caixas para tamanho original
                     boxes = reverter_escala_caixas(boxes, (416, 416), image.size)
-                    # Aplica NMS usando função do utils
                     keep = manual_nms(boxes, scores, classes, 0.4)
                     keep = keep[:10]
                     boxes, scores, classes = boxes[keep], scores[keep], classes[keep]
-                    
-                    # Desenha detecções na imagem usando função do inference
                     image = desenhar_deteccoes(image, boxes, scores, classes, class_names)
                     num_detections = len(boxes)
                 else:
                     num_detections = 0
-            
-            # Salva imagem
             img_name = Path(img_path).name
             output_path = f"exps/exp_v3_hard/{img_name}"
             image.save(output_path)
@@ -205,7 +183,7 @@ def executar_exp_v3(imagens, device='cpu'):
 
 
 def main():
-    """Função principal."""
+    """Main function to run experiments."""
     print("\n" + "="*60)
     print("EXECUTANDO EXPERIMENTOS COMPARATIVOS")
     print("YOLOv3 vs YOLOv26 (Ultralytics)")

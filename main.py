@@ -6,57 +6,43 @@ from weights import carregar_pesos_yolov3
 from inference import executar_predicao, executar_predicao_ultralytics
 
 
-# ==========================================
-# EXECUÇÃO PRINCIPAL
-# ==========================================
-
 def main():
-    # Configuração do dispositivo
+    """Run YOLOv3 predictions on test images."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Processamento via: {device}")
+    print(f"Device: {device}")
 
-    # 1. Carregue as classes
-    class_names = read_classes("data/coco.names")  # Certifique-se de que o arquivo tenha 80 linhas
-    print(f"Carregadas {len(class_names)} classes")
+    class_names = read_classes("data/coco.names")
+    print(f"Loaded {len(class_names)} classes")
 
-    # 2. Instancie o YOLOv3
     modelo = YOLOv3(num_classes=len(class_names)).to(device)
-    print("Modelo YOLOv3 instanciado")
 
-    # 3. Converter e Salvar os Pesos (Rode isso a primeira vez)
+    # Convert weights on first run
     try:
         arquivo_weights = "weights/yolov3.weights"
         modelo = carregar_pesos_yolov3(arquivo_weights, modelo)
         torch.save(modelo.state_dict(), "yolov3_convertido.pth")
-        print("Pesos convertidos e salvos em yolov3_convertido.pth")
+        print("Weights converted and saved")
     except Exception as e:
-        print(f"Aviso na conversão (talvez os pesos já existam ou o arquivo não foi encontrado): {e}")
-
+        print(f"Conversion warning: {e}")
 
     try:
         modelo.load_state_dict(torch.load("yolov3_convertido.pth", map_location=device))
-        print("Pesos carregados de yolov3_convertido.pth")
+        print("Weights loaded successfully")
     except Exception as e:
-        print(f"Erro ao carregar pesos: {e}")
+        print(f"Error loading weights: {e}")
         return
 
-    # 5. Execute predições nas imagens de teste
-    print("\n" + "="*50)
-    print("Executando predições...")
-    print("="*50 + "\n")
+    print("\nRunning predictions...\n")
     
-    # Coloque o nome da sua imagem de teste aqui
     executar_predicao("images/dog.jpg", modelo, class_names, YOLOV3_ANCHORS, device, score_threshold=0.5)
     executar_predicao("images/food.jpg", modelo, class_names, YOLOV3_ANCHORS, device)
 
 
 def main_ultralytics():
-    
+    """Run YOLOv8 predictions on test images."""
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    
-    model_path = 'yolov8n.pt'  
+    model_path = 'yolov8n.pt'
 
-    #mudar se quiser
     images = [
         "images/dog.jpg",
         "images/food.jpg",
@@ -74,7 +60,7 @@ def main_ultralytics():
     
     for img in images:
         executar_predicao_ultralytics(
-            img, 
+            img,
             model_path=model_path,
             score_threshold=0.25,
             iou_threshold=0.45,
@@ -83,7 +69,4 @@ def main_ultralytics():
 
 
 if __name__ == "__main__":
-    
-    # main()
-
     main_ultralytics()

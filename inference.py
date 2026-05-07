@@ -5,12 +5,20 @@ from PIL import Image, ImageDraw, ImageFont
 from utils import preprocess_image, reverter_escala_caixas, generate_colors, manual_nms
 
 
-# ==========================================
-# YOLO HEAD - DECODIFICAÇÃO E PREDIÇÃO
-# ==========================================
-
 def decode_yolo(feats, anchors, num_classes, img_size=416):
-    """Decodifica as saídas brutas do YOLO em caixas e scores."""
+    """
+    Decode raw YOLO outputs into boxes and scores.
+    
+    Args:
+        feats: Raw feature map from YOLO head
+        anchors: Anchor boxes for this scale
+        num_classes: Number of object classes
+        img_size: Input image size
+    
+    Returns:
+        boxes: Decoded bounding boxes [N, 4]
+        scores: Class scores [N, num_classes]
+    """
     B, C, H, W = feats.shape
     num_anchors = len(anchors)
     feats = feats.view(B, num_anchors, 5 + num_classes, H, W).permute(0, 1, 3, 4, 2).contiguous()
@@ -92,8 +100,19 @@ def desenhar_deteccoes(image, boxes, scores, classes, class_names):
 
 
 def executar_predicao(image_file, model, class_names, anchors, device, score_threshold=0.5, iou_threshold=0.4):
-    """Executa a predição completa em uma imagem e exibe o resultado."""
-    print(f"Processando imagem: {image_file}")
+    """
+    Run complete prediction pipeline on an image.
+    
+    Args:
+        image_file: Path to input image
+        model: YOLOv3 model
+        class_names: List of class names
+        anchors: Anchor boxes for all scales
+        device: torch device
+        score_threshold: Confidence threshold
+        iou_threshold: IoU threshold for NMS
+    """
+    print(f"Processing: {image_file}")
     image, image_data = preprocess_image(image_file, (416, 416))
     image_data = image_data.to(device)
 
@@ -122,24 +141,15 @@ def executar_predicao(image_file, model, class_names, anchors, device, score_thr
         scores = box_class_scores[mask]
         classes = box_classes[mask]
 
-        if boxes.size(0) == 0: return print("Nada detectado.")
+        if boxes.size(0) == 0:
+            print("No objects detected")
+            return
 
-        # ==========================================
-        # REVERSÃO DE ESCALA E NMS MANUAL
-        # ==========================================
-        # Subtrai as barras cinzas e escalar corretamente
         boxes = reverter_escala_caixas(boxes, (416, 416), image.size)
-
-        #keep = torchvision.ops.nms(boxes, scores, iou_threshold) # Isso é função pronta, não use isso no seu código, a menos que queira comparar com a sua implementação apenas
-        # Aplica o nosso NMS Manual
-        keep = manual_nms(boxes, scores, classes, iou_threshold) # Aqui entra a função manual de NMS que devem implementar
-
-        # Limita ao número máximo de caixas desejado (ex: top 10 detecções)
-        max_boxes = 10
-        keep = keep[:max_boxes]
+        keep = manual_nms(boxes, scores, classes, iou_threshold)
+        keep = keep[:10]  # Top 10 detections
         boxes, scores, classes = boxes[keep], scores[keep], classes[keep]
 
-    # Desenha detecções usando a função utilitária
     image = desenhar_deteccoes(image, boxes, scores, classes, class_names)
 
     plt.figure(figsize=(12, 12))
@@ -150,10 +160,21 @@ def executar_predicao(image_file, model, class_names, anchors, device, score_thr
  
 
 def executar_predicao_ultralytics(image_file, model_path='yolov8n.pt', score_threshold=0.25, iou_threshold=0.45, device='cpu'):
-
+    """
+    Run YOLOv8 prediction using ultralytics.
+    
+    Args:
+        image_file: Path to input image
+        model_path: Path to YOLOv8 weights
+        score_threshold: Confidence threshold
+        iou_threshold: IoU threshold for NMS
+        device: torch device
+    
+    Returns:
+        results: Ultralytics prediction results
+    """
     from weights import carregar_pesos_ultralytics_v26
     
-
     modelo = carregar_pesos_ultralytics_v26(model_path, device=device)
     modelo.conf = score_threshold
     modelo.iou = iou_threshold

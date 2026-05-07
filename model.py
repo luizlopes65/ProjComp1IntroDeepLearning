@@ -2,12 +2,8 @@ import torch
 import torch.nn as nn
 
 
-# ==========================================
-# BLOCOS DE CONSTRUÇÃO DA REDE (DARKNET-53)
-# ==========================================
-
 class ConvBlock(nn.Module):
-    """Bloco base: Convolução -> BatchNorm -> LeakyReLU"""
+    """Basic block: Conv -> BatchNorm -> LeakyReLU"""
     def __init__(self, in_c, out_c, k, s, p, bn=True):
         super().__init__()
         self.conv = nn.Conv2d(in_c, out_c, k, s, p, bias=not bn)
@@ -22,7 +18,7 @@ class ConvBlock(nn.Module):
 
 
 class ResBlock(nn.Module):
-    """Bloco Residual (Atalho de conexão)"""
+    """Residual block with skip connection"""
     def __init__(self, channels):
         super().__init__()
         self.conv1 = ConvBlock(channels, channels // 2, 1, 1, 0)
@@ -33,33 +29,33 @@ class ResBlock(nn.Module):
 
 
 class YOLOv3(nn.Module):
-    """Arquitetura Completa do YOLOv3"""
+    """Complete YOLOv3 architecture with Darknet-53 backbone"""
     def __init__(self, num_classes=80):
         super().__init__()
         self.num_classes = num_classes
 
-        # --- BACKBONE: DARKNET-53 ---
+        # Backbone: Darknet-53
         self.conv1 = ConvBlock(3, 32, 3, 1, 1)
         self.layer1 = self._make_layer(32, 64, 1)
         self.layer2 = self._make_layer(64, 128, 2)
-        self.layer3 = self._make_layer(128, 256, 8)  # Rota 1 (Usado na Escala 3)
-        self.layer4 = self._make_layer(256, 512, 8)  # Rota 2 (Usado na Escala 2)
-        self.layer5 = self._make_layer(512, 1024, 4) # Rota 3 (Fim do Backbone)
+        self.layer3 = self._make_layer(128, 256, 8)
+        self.layer4 = self._make_layer(256, 512, 8)
+        self.layer5 = self._make_layer(512, 1024, 4)
 
-        # --- CABEÇALHO 1: Escala 13x13 (Objetos Grandes) ---
+        # Head 1: 13x13 scale (large objects)
         self.head1_1 = self._make_c5(1024, 512)
         self.head1_2 = self._make_yolo_head(512, 1024, num_classes)
 
-        # --- CABEÇALHO 2: Escala 26x26 (Objetos Médios) ---
+        # Head 2: 26x26 scale (medium objects)
         self.head2_1 = ConvBlock(512, 256, 1, 1, 0)
         self.upsample1 = nn.Upsample(scale_factor=2, mode='nearest')
-        self.head2_2 = self._make_c5(768, 256) # 256 + 512(Rota 2)
+        self.head2_2 = self._make_c5(768, 256)
         self.head2_3 = self._make_yolo_head(256, 512, num_classes)
 
-        # --- CABEÇALHO 3: Escala 52x52 (Objetos Pequenos) ---
+        # Head 3: 52x52 scale (small objects)
         self.head3_1 = ConvBlock(256, 128, 1, 1, 0)
         self.upsample2 = nn.Upsample(scale_factor=2, mode='nearest')
-        self.head3_2 = self._make_c5(384, 128) # 128 + 256(Rota 1)
+        self.head3_2 = self._make_c5(384, 128)
         self.head3_3 = self._make_yolo_head(128, 256, num_classes)
 
     def _make_layer(self, in_c, out_c, num_blocks):
@@ -69,7 +65,7 @@ class YOLOv3(nn.Module):
         return nn.Sequential(*layers)
 
     def _make_c5(self, in_c, out_c):
-        """Bloco de 5 convoluções intercaladas"""
+        """5 interleaved convolution blocks"""
         return nn.Sequential(
             ConvBlock(in_c, out_c, 1, 1, 0),
             ConvBlock(out_c, out_c * 2, 3, 1, 1),
@@ -79,35 +75,29 @@ class YOLOv3(nn.Module):
         )
 
     def _make_yolo_head(self, in_c, out_c, num_classes):
-        """Convolução Final Linear sem BatchNorm (Previsão de Caixas)"""
+        """Final linear convolution without BatchNorm for box prediction"""
         return nn.Sequential(
             ConvBlock(in_c, out_c, 3, 1, 1),
             nn.Conv2d(out_c, 3 * (5 + num_classes), 1, 1, 0, bias=True)
         )
+def forward(self, x):
+    x = self.layer2(self.layer1(self.conv1(x)))
+    route1 = self.layer3(x)
+    route2 = self.layer4(route1)
+    x = self.layer5(route2)
 
-    def forward(self, x):
-        # Passagem pelo Backbone
-        x = self.layer2(self.layer1(self.conv1(x)))
-        route1 = self.layer3(x)
-        route2 = self.layer4(route1)
-        x = self.layer5(route2)
+    x1_5 = self.head1_1(x)
+    out1 = self.head1_2(x1_5)
 
-        # Escala 1
-        x1_5 = self.head1_1(x)
-        out1 = self.head1_2(x1_5)
+    x = self.upsample1(self.head2_1(x1_5))
+    x = torch.cat([x, route2], dim=1)
+    x2_5 = self.head2_2(x)
+    out2 = self.head2_3(x2_5)
 
-        # Escala 2
-        x = self.upsample1(self.head2_1(x1_5))
-        x = torch.cat([x, route2], dim=1) # Concatenação FPN
-        x2_5 = self.head2_2(x)
-        out2 = self.head2_3(x2_5)
+    x = self.upsample2(self.head3_1(x2_5))
+    x = torch.cat([x, route1], dim=1)
+    x3_5 = self.head3_2(x)
+    out3 = self.head3_3(x3_5)
 
-        # Escala 3
-        x = self.upsample2(self.head3_1(x2_5))
-        x = torch.cat([x, route1], dim=1) # Concatenação FPN
-        x3_5 = self.head3_2(x)
-        out3 = self.head3_3(x3_5)
-
-        return out1, out2, out3
-
+    return out1, out2, out3
  
